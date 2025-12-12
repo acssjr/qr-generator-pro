@@ -1,0 +1,19 @@
+{
+  "name": "qr-tracker",
+  "version": "1.0.0",
+  "description": "QR Code Tracking API with Cloudflare Workers",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create qr-tracker-db",
+    "db:migrate": "wrangler d1 execute qr-tracker-db --file=./schema.sql",
+    "db:migrate:local": "wrangler d1 execute qr-tracker-db --local --file=./schema.sql"
+  },
+  "keywords": ["cloudflare", "workers", "qr-code", "tracking"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
