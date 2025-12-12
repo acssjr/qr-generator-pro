@@ -362,14 +362,88 @@
                         </svg>
                         <span id="copy-text">Copiar Link</span>
                     </button>
+                    <button id="stats-btn" class="action-btn stats-btn" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        Ver Estatísticas
+                    </button>
+                </div>
+
+                <!-- Tracking Section -->
+                <div id="tracking-section" class="tracking-section" style="display: none;">
+                    <div class="tracking-toggle-wrapper" id="tracking-toggle-wrapper">
+                        <div class="tracking-label">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            Ativar Rastreamento de Scans
+                        </div>
+                        <div class="toggle-switch" id="tracking-toggle"></div>
+                    </div>
+                    <div class="tracking-info" id="tracking-info">
+                        <p>🎯 Quando ativado, o QR Code apontará para uma URL de rastreamento que registra cada scan
+                            antes de redirecionar para seu link original.</p>
+                        <div class="tracking-url" id="tracking-url"></div>
+                    </div>
                 </div>
             </div>
         </section>
 
         <footer class="footer">
             <p>Desenvolvido com <span class="heart">♥</span> para facilitar sua vida</p>
+            <button id="open-dashboard-btn" class="action-btn secondary-btn" style="margin-top: 12px; font-size: 12px;">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    style="width: 16px; height: 16px;">
+                    <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                Dashboard de QR Codes
+            </button>
         </footer>
     </main>
+
+    <!-- Dashboard Modal -->
+    <div id="dashboard-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    Dashboard de Estatísticas
+                </h2>
+                <button id="close-modal-btn" class="modal-close">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- QR List View -->
+                <div id="qr-list-view">
+                    <div id="qr-list" class="qr-list">
+                        <div class="loading-spinner"></div>
+                    </div>
+                </div>
+
+                <!-- Stats Detail View -->
+                <div id="stats-detail-view" class="stats-detail">
+                    <button id="stats-back-btn" class="stats-back-btn">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        Voltar para lista
+                    </button>
+                    <div id="stats-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div id="toast" class="toast">
         <svg class="toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

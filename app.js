@@ -639,5 +639,590 @@ document.addEventListener('DOMContentLoaded', () => {
     // Error correction
     document.getElementById('error-correction').addEventListener('change', handleErrorCorrectionChange);
 
+    // Initialize tracking features
+    initTracking();
+
     urlInput.focus();
 });
+
+// ========================================
+// TRACKING FUNCTIONALITY
+// ========================================
+
+const API_BASE_URL = 'https://qr-tracker.acssjr.workers.dev';
+
+// Tracking state
+let trackingEnabled = false;
+let currentTrackingData = null;
+
+// Tracking DOM Elements
+const trackingSection = document.getElementById('tracking-section');
+const trackingToggle = document.getElementById('tracking-toggle');
+const trackingToggleWrapper = document.getElementById('tracking-toggle-wrapper');
+const trackingInfo = document.getElementById('tracking-info');
+const trackingUrlDisplay = document.getElementById('tracking-url');
+const statsBtn = document.getElementById('stats-btn');
+const dashboardModal = document.getElementById('dashboard-modal');
+const closeModalBtn = document.getElementById('close-modal-btn');
+const openDashboardBtn = document.getElementById('open-dashboard-btn');
+const qrListView = document.getElementById('qr-list-view');
+const qrList = document.getElementById('qr-list');
+const statsDetailView = document.getElementById('stats-detail-view');
+const statsBackBtn = document.getElementById('stats-back-btn');
+const statsContent = document.getElementById('stats-content');
+
+/**
+ * Initialize tracking features
+ */
+function initTracking() {
+    // Tracking toggle
+    trackingToggleWrapper.addEventListener('click', handleTrackingToggle);
+
+    // Stats button
+    statsBtn.addEventListener('click', () => {
+        if (currentTrackingData) {
+            openDashboard();
+            showStatsDetail(currentTrackingData.id);
+        }
+    });
+
+    // Dashboard modal
+    openDashboardBtn.addEventListener('click', openDashboard);
+    closeModalBtn.addEventListener('click', closeDashboard);
+    dashboardModal.addEventListener('click', (e) => {
+        if (e.target === dashboardModal) closeDashboard();
+    });
+
+    // Stats back button
+    statsBackBtn.addEventListener('click', () => {
+        statsDetailView.classList.remove('visible');
+        qrListView.style.display = 'block';
+        // Clear URL hash
+        history.pushState('', document.title, window.location.pathname);
+    });
+
+    // ESC key to close modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && dashboardModal.classList.contains('visible')) {
+            closeDashboard();
+        }
+    });
+
+    // Check for deep link on page load
+    checkDeepLink();
+
+    // Handle back/forward navigation
+    window.addEventListener('hashchange', checkDeepLink);
+}
+
+/**
+ * Check if there's a stats ID in the URL and open it
+ */
+function checkDeepLink() {
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#stats/')) {
+        const linkId = hash.replace('#stats/', '');
+        if (linkId) {
+            openDashboard();
+            showStatsDetail(linkId);
+        }
+    }
+}
+
+/**
+ * Handle tracking toggle
+ */
+function handleTrackingToggle() {
+    trackingEnabled = !trackingEnabled;
+    trackingToggle.classList.toggle('active', trackingEnabled);
+    trackingToggleWrapper.classList.toggle('active', trackingEnabled);
+    trackingInfo.classList.toggle('visible', trackingEnabled);
+
+    if (trackingEnabled && currentUrl && isGenerated) {
+        createTrackingLink();
+    } else if (!trackingEnabled && currentTrackingData) {
+        // Revert to original URL
+        qrCode.update(getQRCodeConfig(false));
+        currentTrackingData = null;
+        trackingUrlDisplay.textContent = '';
+        statsBtn.style.display = 'none';
+    }
+}
+
+/**
+ * Create tracking link via API
+ */
+async function createTrackingLink() {
+    if (!currentUrl) return;
+
+    try {
+        trackingUrlDisplay.textContent = 'Criando link de rastreamento...';
+
+        const response = await fetch(`${API_BASE_URL}/api/links`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: currentUrl,
+                title: new URL(currentUrl).hostname
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Falha ao criar link');
+        }
+
+        const result = await response.json();
+        currentTrackingData = result.data;
+
+        // Update QR code with tracking URL
+        const trackingConfig = getQRCodeConfig(false);
+        trackingConfig.data = currentTrackingData.trackingUrl;
+        qrCode.update(trackingConfig);
+
+        // Show tracking URL
+        trackingUrlDisplay.textContent = currentTrackingData.trackingUrl;
+
+        // Show stats button
+        statsBtn.style.display = 'flex';
+
+        // Save to localStorage for future access
+        saveQRCodeToLocalStorage(currentTrackingData);
+
+        showToast('Link de rastreamento criado!', 'success');
+
+    } catch (error) {
+        console.error('Error creating tracking link:', error);
+        trackingUrlDisplay.textContent = 'Erro ao criar link. Tente novamente.';
+        showToast('Erro ao criar link de rastreamento', 'error');
+    }
+}
+
+/**
+ * Save QR Code to localStorage
+ */
+function saveQRCodeToLocalStorage(data) {
+    try {
+        const savedCodes = JSON.parse(localStorage.getItem('qr_codes') || '[]');
+
+        // Check if already exists
+        const exists = savedCodes.some(code => code.id === data.id);
+        if (!exists) {
+            savedCodes.unshift({
+                id: data.id,
+                shortCode: data.shortCode,
+                originalUrl: data.originalUrl,
+                trackingUrl: data.trackingUrl,
+                title: data.title,
+                createdAt: new Date().toISOString()
+            });
+
+            // Keep only last 50 codes
+            if (savedCodes.length > 50) {
+                savedCodes.pop();
+            }
+
+            localStorage.setItem('qr_codes', JSON.stringify(savedCodes));
+        }
+    } catch (e) {
+        console.error('Error saving to localStorage:', e);
+    }
+}
+
+/**
+ * Get saved QR Codes from localStorage
+ */
+function getSavedQRCodes() {
+    try {
+        return JSON.parse(localStorage.getItem('qr_codes') || '[]');
+    } catch (e) {
+        return [];
+    }
+}
+
+/**
+ * Show tracking section when QR is generated
+ */
+const originalGenerateQRCode = generateQRCode;
+generateQRCode = function () {
+    originalGenerateQRCode.call(this);
+
+    // Show tracking section after generation
+    setTimeout(() => {
+        if (isGenerated) {
+            trackingSection.style.display = 'block';
+
+            // If tracking was enabled, create new tracking link
+            if (trackingEnabled) {
+                createTrackingLink();
+            }
+        }
+    }, 350);
+};
+
+/**
+ * Open dashboard modal
+ */
+function openDashboard() {
+    dashboardModal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+    loadQRList();
+}
+
+/**
+ * Close dashboard modal
+ */
+function closeDashboard() {
+    dashboardModal.classList.remove('visible');
+    document.body.style.overflow = '';
+
+    // Reset to list view
+    statsDetailView.classList.remove('visible');
+    qrListView.style.display = 'block';
+}
+
+/**
+ * Load QR codes list
+ */
+async function loadQRList() {
+    qrList.innerHTML = '<div class="loading-spinner"></div>';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/links`);
+        const result = await response.json();
+
+        if (!result.success || result.data.length === 0) {
+            qrList.innerHTML = `
+                <div class="qr-list-empty">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="14" y="14" width="3" height="3" fill="currentColor"/>
+                        <rect x="18" y="14" width="3" height="3" fill="currentColor"/>
+                        <rect x="14" y="18" width="3" height="3" fill="currentColor"/>
+                        <rect x="18" y="18" width="3" height="3" fill="currentColor"/>
+                    </svg>
+                    <p>Nenhum QR Code rastreado ainda</p>
+                    <span>Ative o rastreamento ao gerar um QR Code</span>
+                </div>
+            `;
+            return;
+        }
+
+        qrList.innerHTML = result.data.map(link => `
+            <div class="qr-card" data-id="${link.id}">
+                <div class="qr-card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+                        <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </div>
+                <div class="qr-card-info">
+                    <div class="qr-card-title">${link.title || 'Sem título'}</div>
+                    <div class="qr-card-url">${link.original_url}</div>
+                </div>
+                <div class="qr-card-stats">
+                    <div class="stat-badge">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="2"/>
+                            <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        ${link.total_clicks || 0} scans
+                    </div>
+                    <div class="qr-card-date">${formatDate(link.created_at)}</div>
+                </div>
+            </div>
+        `).join('');
+
+        // Add click handlers
+        qrList.querySelectorAll('.qr-card').forEach(card => {
+            card.addEventListener('click', () => {
+                showStatsDetail(card.dataset.id);
+            });
+        });
+
+    } catch (error) {
+        console.error('Error loading QR list:', error);
+        qrList.innerHTML = `
+            <div class="qr-list-empty">
+                <p>Erro ao carregar QR Codes</p>
+                <span>${error.message}</span>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Show stats detail for a link
+ */
+async function showStatsDetail(linkId) {
+    qrListView.style.display = 'none';
+    statsDetailView.classList.add('visible');
+    statsContent.innerHTML = '<div class="loading-spinner"></div>';
+
+    // Update URL for bookmarking
+    history.pushState(null, '', `#stats/${linkId}`);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/stats/${linkId}`);
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error('Falha ao carregar estatísticas');
+        }
+
+        const { link, stats } = result.data;
+
+        // Calculate trend
+        const trend = stats.todayScans - stats.yesterdayScans;
+        const trendIcon = trend > 0 ? '📈' : trend < 0 ? '📉' : '➡️';
+        const trendText = trend > 0 ? `+${trend}` : trend.toString();
+
+        // Stats URL for sharing
+        const statsUrl = `${window.location.origin}${window.location.pathname}#stats/${link.short_code}`;
+
+        statsContent.innerHTML = `
+            <div class="stats-header">
+                <div class="stats-link-info">
+                    <h3>${link.title || 'Sem título'}</h3>
+                    <p>Destino: <a href="${link.original_url}" target="_blank">${link.original_url}</a></p>
+                    <p>Tracking: <a href="${link.trackingUrl}" target="_blank">${link.trackingUrl}</a></p>
+                    <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button onclick="copyStatsUrl('${statsUrl}')" class="action-btn secondary-btn" style="font-size: 11px; padding: 6px 12px;">
+                            📋 Copiar Link do Dashboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-value">${stats.totalClicks}</div>
+                    <div class="stat-card-label">Total de Scans</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${stats.uniqueScans || 0}</div>
+                    <div class="stat-card-label">Visitantes Únicos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${stats.todayScans || 0}</div>
+                    <div class="stat-card-label">Hoje ${trendIcon} ${trendText}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-value">${stats.clicksByCountry?.length || 0}</div>
+                    <div class="stat-card-label">Países</div>
+                </div>
+            </div>
+
+            ${stats.firstScan ? `
+            <div class="chart-section" style="margin-bottom: 16px;">
+                <div style="display: flex; gap: 24px; font-size: 12px; color: var(--text-tertiary);">
+                    <span>📅 Primeiro scan: ${formatDateTime(stats.firstScan)}</span>
+                    <span>🕐 Último scan: ${formatDateTime(stats.lastScan)}</span>
+                </div>
+            </div>
+            ` : ''}
+
+            ${stats.clicksByDay?.length > 0 ? `
+            <div class="chart-section">
+                <h4 class="chart-title">📊 Scans por Dia (últimos 7 dias)</h4>
+                <div class="chart-container">
+                    <div class="chart-bars">
+                        ${renderDayChart(stats.clicksByDay)}
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            ${stats.clicksByHour?.length > 0 ? `
+            <div class="chart-section">
+                <h4 class="chart-title">🕐 Scans por Hora do Dia</h4>
+                <div class="chart-container">
+                    <div class="chart-bars">
+                        ${renderHourChart(stats.clicksByHour)}
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            ${stats.clicksByCity?.length > 0 ? `
+            <div class="chart-section">
+                <h4 class="chart-title">🏙️ Top Cidades</h4>
+                <div class="stats-list">
+                    ${stats.clicksByCity.map(item => `
+                        <div class="stats-list-item">
+                            <span class="stats-list-label">${getCountryFlag(item.country)} ${item.city}</span>
+                            <span class="stats-list-value">${item.count} scans</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+
+            ${stats.clicksByCountry?.length > 0 ? `
+            <div class="chart-section">
+                <h4 class="chart-title">🌍 Por País</h4>
+                <div class="stats-list">
+                    ${stats.clicksByCountry.map(item => `
+                        <div class="stats-list-item">
+                            <span class="stats-list-label">${getCountryFlag(item.country)} ${item.country}</span>
+                            <span class="stats-list-value">${item.count} scans</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+
+            ${stats.clicksByDevice?.length > 0 ? `
+            <div class="chart-section">
+                <h4 class="chart-title">📱 Por Dispositivo</h4>
+                <div class="stats-list">
+                    ${stats.clicksByDevice.map(item => `
+                        <div class="stats-list-item">
+                            <span class="stats-list-label">${getDeviceIcon(item.device_type)} ${item.device_type}</span>
+                            <span class="stats-list-value">${item.count} scans</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+
+            ${stats.recentClicks?.length > 0 ? `
+            <div class="chart-section">
+                <h4 class="chart-title">Últimos Scans</h4>
+                <div class="recent-clicks">
+                    ${stats.recentClicks.map(click => `
+                        <div class="click-item">
+                            <div class="click-info">
+                                <div class="click-device-icon">
+                                    ${getDeviceIcon(click.device_type)}
+                                </div>
+                                <div class="click-details">
+                                    <strong>${click.country}${click.city ? ', ' + click.city : ''}</strong>
+                                    <span>${click.browser} • ${click.os}</span>
+                                </div>
+                            </div>
+                            <span class="click-time">${formatDateTime(click.clicked_at)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : `
+            <div class="qr-list-empty">
+                <p>Nenhum scan registrado ainda</p>
+                <span>Escaneie o QR Code para ver as estatísticas</span>
+            </div>
+            `}
+        `;
+
+    } catch (error) {
+        console.error('Error loading stats:', error);
+        statsContent.innerHTML = `
+            <div class="qr-list-empty">
+                <p>Erro ao carregar estatísticas</p>
+                <span>${error.message}</span>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Helper functions
+ */
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('pt-BR');
+}
+
+function formatDateTime(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+/**
+ * Copy stats URL to clipboard
+ */
+function copyStatsUrl(url) {
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('Link copiado! Salve para acessar as estatísticas depois.', 'success');
+    }).catch(() => {
+        showToast('Erro ao copiar link', 'error');
+    });
+}
+
+function getMostCommon(items) {
+    if (!items || items.length === 0) return '-';
+    return items[0].device_type || items[0].country || '-';
+}
+
+function getCountryFlag(countryCode) {
+    if (!countryCode || countryCode === 'unknown') return '🌍';
+    try {
+        const codePoints = countryCode
+            .toUpperCase()
+            .split('')
+            .map(char => 127397 + char.charCodeAt());
+        return String.fromCodePoint(...codePoints);
+    } catch {
+        return '🌍';
+    }
+}
+
+function getDeviceIcon(deviceType) {
+    const icons = {
+        mobile: '<svg viewBox="0 0 24 24" fill="none" style="width:16px;height:16px"><rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" stroke-width="2"/><line x1="12" y1="18" x2="12" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        tablet: '<svg viewBox="0 0 24 24" fill="none" style="width:16px;height:16px"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2"/><line x1="12" y1="18" x2="12" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        desktop: '<svg viewBox="0 0 24 24" fill="none" style="width:16px;height:16px"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+    };
+    return icons[deviceType] || icons.desktop;
+}
+
+function renderDayChart(clicksByDay) {
+    // Get last 7 days
+    const last7Days = clicksByDay.slice(0, 7).reverse();
+    const maxCount = Math.max(...last7Days.map(d => d.count), 1);
+
+    return last7Days.map(day => {
+        const height = (day.count / maxCount) * 100;
+        const dateLabel = new Date(day.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        return `
+            <div class="chart-bar" style="height: ${Math.max(height, 3)}%" title="${day.count} scans">
+                <span class="chart-bar-label">${dateLabel}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderHourChart(clicksByHour) {
+    // Create array for all 24 hours
+    const hoursData = Array(24).fill(0);
+    clicksByHour.forEach(h => {
+        const hour = parseInt(h.hour);
+        if (!isNaN(hour) && hour >= 0 && hour < 24) {
+            hoursData[hour] = h.count;
+        }
+    });
+
+    const maxCount = Math.max(...hoursData, 1);
+
+    // Show every 3rd hour for readability
+    return hoursData.map((count, hour) => {
+        const height = (count / maxCount) * 100;
+        const showLabel = hour % 3 === 0;
+        return `
+            <div class="chart-bar" style="height: ${Math.max(height, 3)}%; flex: 1; max-width: 20px;" title="${hour}h: ${count} scans">
+                ${showLabel ? `<span class="chart-bar-label">${hour}h</span>` : ''}
+            </div>
+        `;
+    }).join('');
+}
